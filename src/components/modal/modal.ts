@@ -1,59 +1,19 @@
 import { App } from '../app/app';
 import { Config } from '../../config/config';
-import { isPresent } from '../../util/util';
-import { PORTAL_MODAL } from '../app/app-constants';
-import { ModalCmp } from './modal-component';
-import { ModalOptions } from './modal-options';
-import { ModalSlideIn, ModalSlideOut, ModalMDSlideIn, ModalMDSlideOut } from './modal-transitions';
-import { NavOptions } from '../../navigation/nav-util';
-import { ViewController } from '../../navigation/view-controller';
+import { isString } from '../../util/util';
 
+import { ModalOptions } from './modal-options';
+import { NavOptions } from '../../navigation/nav-util';
+import { LoadedModule, ModuleLoader } from '../../util/module-loader';
+
+import { ModalImpl } from './modal-impl';
 
 /**
  * @private
  */
-export class Modal extends ViewController {
-  private _app: App;
-  private _enterAnimation: string;
-  private _leaveAnimation: string;
+export class Modal {
 
-  constructor(app: App, component: any, data: any, opts: ModalOptions = {}, config: Config) {
-    data = data || {};
-    data.component = component;
-    opts.showBackdrop = isPresent(opts.showBackdrop) ? !!opts.showBackdrop : true;
-    opts.enableBackdropDismiss = isPresent(opts.enableBackdropDismiss) ? !!opts.enableBackdropDismiss : true;
-    data.opts = opts;
-
-    super(ModalCmp, data, null);
-    this._app = app;
-    this._enterAnimation = opts.enterAnimation;
-    this._leaveAnimation = opts.leaveAnimation;
-
-    this.isOverlay = true;
-
-    config.setTransition('modal-slide-in', ModalSlideIn);
-    config.setTransition('modal-slide-out', ModalSlideOut);
-    config.setTransition('modal-md-slide-in', ModalMDSlideIn);
-    config.setTransition('modal-md-slide-out', ModalMDSlideOut);
-  }
-
-  /**
-   * @private
-   */
-  getTransitionName(direction: string): string {
-    let key: string;
-    if (direction === 'back') {
-      if (this._leaveAnimation) {
-        return this._leaveAnimation;
-      }
-      key = 'modalLeave';
-    } else {
-      if (this._enterAnimation) {
-        return this._enterAnimation;
-      }
-      key = 'modalEnter';
-    }
-    return this._nav && this._nav.config.get(key);
+  constructor(private app: App, private component: any, private data: any, private opts: ModalOptions = {}, private config: Config, private moduleLoader: ModuleLoader) {
   }
 
   /**
@@ -63,8 +23,18 @@ export class Modal extends ViewController {
    * @returns {Promise} Returns a promise which is resolved when the transition has completed.
    */
   present(navOptions: NavOptions = {}) {
-    navOptions.minClickBlockDuration = navOptions.minClickBlockDuration || 400;
-    return this._app.present(this, navOptions, PORTAL_MODAL);
+    // check if it's a lazy loaded component, or not
+    const isLazyLoaded = isString(this.component);
+    if (isLazyLoaded) {
+      return this.moduleLoader.load(this.component).then((response: LoadedModule) => {
+        this.component = response.component;
+        const viewController = new ModalImpl(this.app, this.component, this.data, this.opts, this.config);
+        return viewController.present();
+      });
+    } else {
+      const viewController = new ModalImpl(this.app, this.component, this.data, this.opts, this.config);
+      return viewController.present();
+    }
   }
 
 }
